@@ -52,7 +52,7 @@ curl --silent -H 'Content-Type: application/json' \
 
 ```vb
 Public Function GET_LATITUDE() As String
-    Dim apiUrl$
+    Dim apiUrl$, rawResult$
     apiUrl = "https://geo.qualaroo.com/json/"
 
     rawResult = REQUEST(apiUrl, "GET")
@@ -60,7 +60,7 @@ Public Function GET_LATITUDE() As String
 End Function
 
 Public Function GET_LONGITUDE() As String
-    Dim apiUrl$
+    Dim apiUrl$, rawResult$
     apiUrl = "https://geo.qualaroo.com/json/"
 
     rawResult = REQUEST(apiUrl, "GET")
@@ -68,7 +68,7 @@ Public Function GET_LONGITUDE() As String
 End Function
 
 Public Function GET_ZIP_CODE_INFO(ByVal zipCode$, ByVal fieldName$) As String
-    Dim apiUrl$
+    Dim apiUrl$, rawResult$
     apiUrl = "http://viacep.com.br/ws/"
 
     rawResult = REQUEST(apiUrl & zipCode & "/json", "GET")
@@ -76,7 +76,7 @@ Public Function GET_ZIP_CODE_INFO(ByVal zipCode$, ByVal fieldName$) As String
 End Function
 
 Public Function GET_CURRENCY_TICKET(Optional ByVal currencyKind$, Optional ByVal ticketKind$) As Currency
-    Dim apiUrl$, finalResult$
+    Dim apiUrl$, finalResult$, rawResult$
     apiUrl = "https://economia.awesomeapi.com.br/all/"
 
     'currencyKind default is "USD-BRL"
@@ -98,7 +98,7 @@ Public Function GET_CURRENCY_TICKET(Optional ByVal currencyKind$, Optional ByVal
 End Function
 
 Public Function GET_BITCOIN_TICKET(Optional ByVal ticketKind$) As Currency
-    Dim apiUrl$, finalResult$
+    Dim apiUrl$, finalResult$, rawResult$
     apiUrl = "https://api.bitpreco.com/btc-brl/ticker"
 
     'ticketKind default is "last"
@@ -113,15 +113,52 @@ Public Function GET_BITCOIN_TICKET(Optional ByVal ticketKind$) As Currency
     GET_BITCOIN_TICKET = CCur(Replace(finalResult, ".", ","))
 End Function
 
-Private Function handleJsonParts(ByVal jsonDataString$, ByVal fieldName$) As String
+Public Function handleJsonParts(ByVal jsonDataString$, ByVal fieldName$) As String
     Dim finalResult$
     Dim jsonParts() As String
     Dim jsonFields() As String
+    Dim i, j As Integer
+
+    Dim RE As Object, strRegex$
+    Dim jsonPart, allMatches As Variant
+    Set RE = CreateObject("VBScript.RegExp")
 
     'turn json string into parts split by comma
     jsonParts = Split(jsonDataString, ",")
 
+    'encompasses ":{ or ":[
+    RE.Pattern = """:[\{\]\}\]](.*)"
+    RE.Global = True
+    RE.IgnoreCase = True
+
     For Each jsonPart In jsonParts
+
+        If RE.test(jsonPart) Then
+            'MsgBox RE.test(jsonPart)
+
+            Set allMatches = RE.Execute(jsonPart)
+
+            If allMatches.Count <> 0 Then
+                For i = 0 To allMatches.Count - 1
+                    'MsgBox allMatches.Item(i)
+
+                    For j = 0 To allMatches.Item(i).submatches.Count - 1
+                        'MsgBox allMatches.Item(i).submatches.Item(j)
+                        jsonPart = allMatches.Item(i).submatches.Item(j)
+                        Exit For 'break
+                    Next
+
+                    If jsonPart = "" Then
+                        jsonPart = allMatches.Item(i)
+                        Exit For 'break
+                    End If
+
+                Next
+
+            End If
+
+        End If
+
         jsonPart = Replace(jsonPart, "{", "")
         jsonPart = Replace(jsonPart, "}", "")
         jsonPart = Replace(jsonPart, """", "") 'remove double quotation marks
@@ -139,11 +176,14 @@ Private Function handleJsonParts(ByVal jsonDataString$, ByVal fieldName$) As Str
     handleJsonParts = finalResult
 End Function
 
-Public Function REQUEST(ByVal apiUrl$, ByVal method$, Optional ByVal jsonDataString$, Optional ByVal bearerToken$) As String
+Public Function REQUEST(ByVal apiUrl$, ByVal method$, Optional ByVal jsonDataString$, Optional ByVal bearerToken$, Optional ByVal basicToken$) As String
     Dim objHTTP As Object
     Dim responseCode$, responseText$
 
     Set objHTTP = CreateObject("MSXML2.ServerXMLHTTP")
+
+    'ignore ssl errors
+    objHTTP.SetOption 2, objHTTP.GetOption(2) 'SXH_SERVER_CERT_IGNORE_ALL_SERVER_ERRORS
 
     objHTTP.Open method, apiUrl, False
     objHTTP.setRequestHeader "Content-type", "application/json"
@@ -153,8 +193,13 @@ Public Function REQUEST(ByVal apiUrl$, ByVal method$, Optional ByVal jsonDataStr
         objHTTP.setRequestHeader "Authorization", "Bearer " & bearerToken
     End If
 
+    'setting oauth token when provided
+    If basicToken <> "" Then
+        objHTTP.setRequestHeader "Authorization", "Basic " & basicToken
+    End If
+
     'setting payload when provided
-    If jsonDataString <> "" Then
+    If Not jsonDataString = "" Then
         objHTTP.Send (jsonDataString)
     Else
         objHTTP.Send
@@ -171,6 +216,7 @@ Public Function REQUEST(ByVal apiUrl$, ByVal method$, Optional ByVal jsonDataStr
 
     Set objHTTP = Nothing
 
+    'returns responseText
     REQUEST = responseText
 End Function
 ```
